@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: order-processing-system
+  data:
+    mongodb:
+      # Pool sizing is per instance: (instances x maxPoolSize) must stay below MongoDB's connection limit.
+      uri: ${MONGODB_URI:mongodb://localhost:27017/orders?maxPoolSize=50&minPoolSize=5&waitQueueTimeoutMS=2000&maxIdleTimeMS=60000&readPreference=${MONGODB_READ_PREFERENCE:primary}}
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # Short timeouts: Redis is only a cache/limiter, so an outage must fail fast and fall back.
+      timeout: ${REDIS_TIMEOUT:500ms}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:500ms}
+  jackson:
+    deserialization:
+      # Reject unknown fields (e.g. client-supplied totalAmount/status) instead of silently ignoring them.
+      fail-on-unknown-properties: true
+      # Reject non-integer quantities (e.g. 1.5) instead of silently truncating them.
+      accept-float-as-int: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-components: always
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+orders:
+  cache:
+    order-ttl: PT60S          # GET /orders/{id} cache TTL (ORDERS_CACHE_ORDER_TTL)
+  rate-limit:                 # per client IP, shared across instances via Redis
+    enabled: true
+    capacity: 100
+    refill-tokens: 100
+    refill-period: PT1M
+  # Validated by SchedulerProperties. Overridable via env vars, e.g. ORDERS_SCHEDULER_CRON.
+  scheduler:
+    enabled: true
+    cron: "0 */5 * * * *"
+    min-pending-age: PT0S   # literal requirement; PT5M = guaranteed 5-minute cancel window
+    batch-size: 1000
+    lock-at-most-for: PT4M

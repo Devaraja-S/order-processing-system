@@ -1,0 +1,18 @@
+package com.peerislands.orders;
+
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Bean;
+import org.testcontainers.containers.MongoDBContainer;
+import org.testcontainers.utility.DockerImageName;
+
+/** Real MongoDB only, for tests that simulate Redis being unavailable. */
+@TestConfiguration(proxyBeanMethods = false)
+public class MongoOnlyTestcontainersConfig {
+
+    @Bean
+    @ServiceConnection
+    MongoDBContainer mongoDbContainer() {
+        return new MongoDBContainer(DockerImageName.parse("mongo:7"));
+    }
+}
