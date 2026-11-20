@@ -22,6 +22,7 @@
 15. [Testing strategy](#15-testing-strategy)
 16. [Scaling roadmap](#16-scaling-roadmap)
 17. [Rejected alternatives](#17-rejected-alternatives)
+18. [Security roadmap](#18-security-roadmap)
 
 ---
 
@@ -42,7 +43,7 @@
 - Any UI.
 - Customers and products collections (customer and product data are not validated against a catalog;
   product name and price are snapshotted on the order).
-- Authentication / authorization.
+- Authentication / authorization (planned; see [§18 Security roadmap](#18-security-roadmap)).
 - Payments, inventory, shipping integrations.
 - Multiple currencies — a single currency is assumed; no currency field is stored.
 
@@ -546,3 +547,83 @@ Documented only — **not built**.
 | Read-check-write in Java (load, check status, save) | Lost updates / both-win races between cancel and scheduler. |
 | `skip`/offset pagination | Degrades linearly with depth and is unstable under concurrent inserts. |
 | JPA/Hibernate | Not applicable to MongoDB; Spring Data MongoDB is the native fit. |
+
+---
+
+## 18. Security roadmap
+
+Documented only — **not built** (authentication and authorization were out of scope for the
+assignment and left out for time). This section records what the service already does and what must
+be added before it can run in production.
+
+### Already in place
+
+| Area | What the service does today |
+|------|-----------------------------|
+| Input validation | Strict Bean Validation on every field and size limit (§3); unknown JSON fields rejected, so clients cannot send `totalAmount`, `status` or `id`; no float-to-int truncation |
+| Server-side values | `totalAmount`, `status`, `id` and timestamps are always set by the server |
+| No injection surface | All MongoDB access goes through Spring Data `Criteria`/repositories with typed parameters; no queries built from strings |
+| Error responses | RFC 7807 `ProblemDetail`; unexpected errors return a generic 500 and the stack trace is only logged, never returned |
+| Abuse protection | Per-IP rate limiting (§10); client IP taken from the socket, raw `X-Forwarded-For` never trusted (prevents spoofing the limiter key) |
+| Opaque cursor | The pagination cursor is validated strictly; a malformed cursor is a 400, never passed to the database |
+| Actuator | Only `health` and `info` are exposed |
+| Configuration | No credentials in code; connection settings come from environment variables |
+
+### Planned, in priority order
+
+**Phase A — required before production**
+
+1. **Authentication: OAuth 2.0 / OpenID Connect with JWT.** Run as a Spring Security OAuth2 resource
+   server; validate signature (JWKS from the identity provider), issuer, audience and expiry on every
+   request. All `/api/v1/**` endpoints require a valid token. No sessions (stateless API), so CSRF
+   protection is not needed.
+2. **Authorization by role and scope.**
+   | Endpoint | Allowed |
+   |----------|---------|
+   | `POST /orders`, `GET /orders/{id}`, `GET /orders`, `POST /orders/{id}/cancel` | Customer (own orders only) and support staff |
+   | `PATCH /orders/{id}/status` | Operations / fulfilment role only (customers must not mark orders SHIPPED or DELIVERED) |
+3. **Object-level authorization (OWASP API Security #1, BOLA).** Today `customerId` comes from the
+   request body and any caller can read or cancel any order by id. With auth, `customerId` is taken
+   from the token (`sub` claim), never from the body; get, cancel and list check ownership. A
+   non-owner gets **404**, not 403, so order ids cannot be probed. The existing `customerId_createdAt`
+   index already supports "list my orders".
+4. **Scope idempotency keys per client.** Keys are global today, so two clients could collide on the
+   same key. Store and look up the key together with the authenticated principal (unique index on
+   `{customerId, idempotencyKey}`).
+5. **Transport security.** TLS terminated at the load balancer / ingress with HSTS; HTTP redirected
+   or refused. TLS and authentication for MongoDB and Redis too (MongoDB SCRAM users, Redis ACL
+   users), each with least-privilege rights (the app user cannot drop collections or run admin
+   commands). Databases reachable only from the application network.
+6. **Secrets management.** Database credentials and identity-provider settings from a secret store
+   (e.g. Vault, AWS Secrets Manager, Kubernetes secrets), rotated regularly, never in the repository
+   or the image.
+7. **Lock down documentation and management endpoints.** Disable Swagger UI in production (or put it
+   behind authentication). Actuator on a separate management port, `show-components` /
+   `show-details` only for authorized callers, so component names and versions are not public.
+
+**Phase B — hardening**
+
+8. **Correct client IP behind proxies.** Configure trusted proxies
+   (`server.forward-headers-strategy` with the known load-balancer addresses) so the rate limiter
+   sees the real client, not the load balancer.
+9. **Smarter rate limiting.** Limit per authenticated client instead of per IP; separate, stricter
+   limits for write endpoints; an API gateway or WAF in front for volumetric attacks and bot
+   protection.
+10. **Request limits.** Maximum request body size and header size, plus server read/write timeouts,
+    so oversized or slow requests cannot tie up threads.
+11. **Security headers and CORS.** Spring Security defaults (`X-Content-Type-Options: nosniff`,
+    `Cache-Control: no-store` on API responses, frame denial). CORS denied by default; allow only
+    known front-end origins if a browser client is added.
+12. **Audit trail.** Record who changed each order's status (actor from the token, timestamp,
+    from → to) in a status-history array on the order; add a correlation id to every log line; keep
+    personal data out of logs.
+
+**Phase C — continuous assurance**
+
+13. **Security tests in the build.** Integration tests for 401 (no or invalid token), 403 (wrong
+    role) and 404-for-non-owner on every endpoint, so a missing check fails the build.
+14. **Supply chain and scanning.** Dependabot or OWASP Dependency-Check for vulnerable libraries,
+    static analysis (e.g. CodeQL), container image scanning, a minimal non-root runtime image, and a
+    DAST scan (e.g. OWASP ZAP) against a test environment.
+15. **Data protection.** Encryption at rest for MongoDB and backups; keep only the customer data the
+    service needs.

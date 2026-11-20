@@ -90,6 +90,23 @@ _TODO_
 See [docs/DESIGN.md — Scaling roadmap](docs/DESIGN.md#16-scaling-roadmap) and
 [Rejected alternatives](docs/DESIGN.md#17-rejected-alternatives).
 
+## Security roadmap
+
+Authentication and authorization were out of scope for this assignment and are **not built yet**.
+What the service already does (strict input validation, server-set totals and statuses, no
+string-built queries, no stack traces in responses, spoof-resistant per-IP rate limiting, minimal
+Actuator exposure) and the production plan are in
+[docs/DESIGN.md — Security roadmap](docs/DESIGN.md#18-security-roadmap). In short:
+
+- **Before production:** OAuth 2.0 / OIDC JWT authentication; role-based access (only operations
+  staff can PATCH status); object-level checks so customers see and cancel only their own orders
+  (`customerId` from the token, 404 for others); idempotency keys scoped per client; TLS everywhere
+  including MongoDB and Redis; secrets from a secret store; Swagger and Actuator locked down.
+- **Hardening:** trusted-proxy client IP, per-client and per-endpoint rate limits, request size
+  limits, security headers and CORS, status-change audit trail.
+- **Continuous:** 401/403/404 security tests in the build, dependency and image scanning, DAST,
+  encryption at rest.
+
 ## AI usage
 
 See [docs/AI_USAGE.md](docs/AI_USAGE.md).
