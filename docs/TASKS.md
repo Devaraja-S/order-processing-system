@@ -1,7 +1,7 @@
 # Build Plan
 
 Work one phase at a time. Before coding a phase: show a plan and wait for approval.
-A phase is done only when `mvn clean verify` passes and all its boxes are ticked.
+A phase is done only when `./mvnw clean verify` passes and all its boxes are ticked.
 
 ---
 
@@ -100,9 +100,9 @@ A phase is done only when `mvn clean verify` passes and all its boxes are ticked
 ## Phase 8 — Swagger docs, error polish, README completion
 
 - [ ] springdoc-openapi annotations / descriptions for all 5 endpoints, headers, error responses
-- [ ] Swagger UI reachable at `/swagger-ui.html`
+- [x] Swagger UI reachable at `/swagger-ui.html`
 - [ ] Review all error responses for consistent `ProblemDetail` shape
-- [ ] Complete `README.md` (run instructions, curl examples, design highlights, assumptions, testing)
+- [x] Complete `README.md` (run instructions, curl examples, design highlights, assumptions, testing)
 - [ ] Final check that docs/DESIGN.md matches the implementation
-- [ ] **Tests:** full `mvn clean verify` green
-- [ ] Finalize `docs/AI_USAGE.md` (lessons learned)
+- [x] **Tests:** full `./mvnw clean verify` green
+- [x] Finalize `docs/AI_USAGE.md` (lessons learned)

@@ -72,9 +72,12 @@ was verified" below).
   integration test and on the real app (stopping and restarting Redis).
 
 ### Phase 8 — Swagger, error polish, README
-- Not finished yet. The plan (OpenAPI annotations, an error-format test for every error type, a test
-  that the API has exactly 5 endpoints, README curl examples) is written; work continues after
-  submission.
+- README completed: run instructions, environment-variable table, design highlights, testing
+  summary, and curl examples whose responses were captured from a real run of the app (not
+  invented). DESIGN.md class list updated to match the code.
+- Not finished yet: OpenAPI annotations with endpoint descriptions, an error-format test for every
+  error type, and a test that the API has exactly 5 endpoints. Swagger UI already works with the
+  generated documentation.
 - AI helped me prepare the trade-off explanation for the scheduler's cancel window (see DESIGN.md §8)
   and the security roadmap (DESIGN.md §18).
 

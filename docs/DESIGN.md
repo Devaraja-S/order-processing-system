@@ -79,6 +79,8 @@ Key principles:
 - **MongoDB is the only source of truth.** Redis holds only derived/ephemeral data (cache entries,
   rate-limit buckets). Losing Redis never loses an order.
 - **Every status change is a conditional atomic update** in MongoDB (see §7).
+- **Redis access is isolated** in `OrderCache` (used by `OrderService` for `GET /orders/{id}`) and
+  `RedisRateLimiter` (used by the rate-limit filter). Both fail open if Redis is down (§9, §10).
 - **Stateless app instances** — horizontal scaling is safe; ShedLock ensures the scheduler runs on
   one instance at a time.
 
@@ -484,22 +486,20 @@ No additional patterns are to be introduced for show.
 
 ## 14. Low-level design (packages and classes)
 
-Base package `com.peerislands.orders`. Names are indicative; final names agreed per phase.
+Base package `com.peerislands.orders`.
 
 | Package      | Contents |
 |--------------|----------|
-| `controller` | `OrderController` |
-| `service`    | `OrderService` |
-| `domain`     | `Order`, `OrderItem`, `OrderStatus` |
-| `repository` | `OrderRepository` (MongoRepository), `OrderRepositoryCustom` + impl (MongoTemplate: conditional updates, keyset queries, ID fetch for scheduler) |
-| `scheduler`  | `OrderStatusScheduler`, `PendingOrderProcessor`, `SchedulerProperties` |
-| `event`      | `OrderStatusChangedEvent`, `OrdersProcessedEvent`, cache-eviction listener |
-| `config`     | Mongo (Decimal128 mapping, indexes, read preference), Redis cache, ShedLock, Bucket4j/rate-limit filter, OpenAPI |
-| `exception`  | Domain exceptions, `GlobalExceptionHandler` (`@RestControllerAdvice`) |
-| `mapper`     | Order ↔ DTO mapping; cursor encode/decode |
-
-DTOs (records): `CreateOrderRequest`, `OrderItemRequest`, `UpdateStatusRequest`, `OrderResponse`,
-`OrderItemResponse`, `OrderPageResponse { items, nextCursor }`.
+| `controller` | `OrderController` (the 5 endpoints; validates, delegates, maps) |
+| `controller.dto` | Records: `CreateOrderRequest`, `OrderItemRequest`, `UpdateStatusRequest`, `OrderResponse`, `OrderItemResponse`, `OrderPageResponse { items, nextCursor }` |
+| `service`    | `OrderService` (create with idempotency, get, list, transitions), `OrderCache` (Redis cache-aside, fail-open), `RequestHasher` (SHA-256 of the normalized request), `CreateOrderResult`, `OrderPage` |
+| `domain`     | `Order`, `OrderItem`, `OrderStatus` (state machine) |
+| `repository` | `OrderRepository` (MongoRepository), `OrderRepositoryCustom` + `OrderRepositoryCustomImpl` (MongoTemplate: conditional `findAndModify` / `updateMulti`, keyset page query, index-only PENDING ID query), `OrderCursor` |
+| `scheduler`  | `OrderStatusScheduler` (`@Scheduled` + `@SchedulerLock`), `PendingOrderProcessor` (batch promotion), `SchedulerProperties` (validated record) |
+| `event`      | `OrderStatusChangedEvent`, `OrdersProcessedEvent`, `CacheEvictionListener` |
+| `config`     | `MongoIndexConfig` (named indexes), `SchedulerConfig` (ShedLock Mongo provider), `SchedulingEnabledConfig` (`@EnableScheduling` toggle), `ClockConfig`, `RedisFeaturesConfig`, `OrdersCacheProperties`, `RateLimitProperties`, `RedisRateLimiter` (Bucket4j + Lettuce), `RateLimitFilter` |
+| `exception`  | `OrderNotFoundException`, `InvalidStatusTransitionException`, `StatusNotPatchableException`, `IdempotencyKeyReuseException`, `InvalidCursorException`, `GlobalExceptionHandler` (`@RestControllerAdvice`, RFC 7807) |
+| `mapper`     | `OrderMapper` (DTO ↔ domain), `CursorCodec` (cursor encode/decode) |
 
 ---
 
